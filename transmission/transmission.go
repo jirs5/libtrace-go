@@ -48,6 +48,7 @@ var Opsramptoken, OpsrampKey, OpsrampSecret, ApiEndPoint string
 var mutex sync.Mutex
 var conn *grpc.ClientConn
 var opts []grpc.DialOption
+
 type Opsramptraceproxy struct {
 	// how many events to collect into a batch before sending
 	MaxBatchSize uint
@@ -94,19 +95,17 @@ type Opsramptraceproxy struct {
 	UseTls         bool
 	UseTlsInsecure bool
 
-	OpsrampKey	string
+	OpsrampKey    string
 	OpsrampSecret string
-	ApiHost 	string
+	ApiHost       string
 }
-
 
 type OpsRampAuthTokenResponse struct {
 	AccessToken string `json:"access_token"`
 	TokenType   string `json:"token_type"`
-	ExpiresIn   int64    `json:"expires_in"`
+	ExpiresIn   int64  `json:"expires_in"`
 	Scope       string `json:"scope"`
 }
-
 
 func (h *Opsramptraceproxy) Start() error {
 	if h.Logger == nil {
@@ -134,17 +133,16 @@ func (h *Opsramptraceproxy) Start() error {
 				logger:                h.Logger,
 				useTls:                h.UseTls,
 				useTlsInsecure:        h.UseTlsInsecure,
-				OpsrampKey: 		   h.OpsrampKey,
-				OpsrampSecret:		   h.OpsrampSecret,
-				ApiHost:			   h.ApiHost,
+				OpsrampKey:            h.OpsrampKey,
+				OpsrampSecret:         h.OpsrampSecret,
+				ApiHost:               h.ApiHost,
 			}
 		}
 	}
 
-
 	OpsrampKey = h.OpsrampKey
 	OpsrampSecret = h.OpsrampSecret
-	ApiEndPoint =  h.ApiHost
+	ApiEndPoint = h.ApiHost
 	mutex.Lock()
 	Opsramptoken = opsrampOauthToken()
 	mutex.Unlock()
@@ -153,8 +151,7 @@ func (h *Opsramptraceproxy) Start() error {
 	return h.muster.Start()
 }
 
-func opsrampOauthToken() string  {
-
+func opsrampOauthToken() string {
 
 	url := fmt.Sprintf("%s/auth/oauth/token", strings.TrimRight(ApiEndPoint, "/"))
 	requestBody := strings.NewReader("client_id=" + OpsrampKey + "&client_secret=" + OpsrampSecret + "&grant_type=client_credentials")
@@ -163,8 +160,10 @@ func opsrampOauthToken() string  {
 	req.Header.Add("Accept", "application/json")
 	req.Header.Set("Connection", "close")
 
-
-	resp, _ := http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		fmt.Println("auth resp err is: ", err)
+	}
 	defer resp.Body.Close()
 
 	respBody, _ := ioutil.ReadAll(resp.Body)
@@ -298,10 +297,9 @@ type batchAgg struct {
 
 	useTls         bool
 	useTlsInsecure bool
-	OpsrampKey	string
-	OpsrampSecret string
-	ApiHost	string
-
+	OpsrampKey     string
+	OpsrampSecret  string
+	ApiHost        string
 }
 
 // batch is a collection of events that will all be POSTed as one HTTP call
@@ -387,7 +385,6 @@ func (b *batchAgg) Fire(notifier muster.Notifier) {
 //type httpError interface {
 //	Timeout() bool
 //}
-
 
 func (b *batchAgg) exportProtoMsgBatch(events []*Event) {
 	var agent bool
@@ -493,7 +490,6 @@ func (b *batchAgg) exportProtoMsgBatch(events []*Event) {
 				grpc.WithUnaryInterceptor(grpcInterceptor),
 			}
 
-
 		} else {
 			fmt.Println("Connecting without Tls")
 			//conn, err = grpc.Dial(apiHostUrl, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -509,7 +505,7 @@ func (b *batchAgg) exportProtoMsgBatch(events []*Event) {
 		}
 
 		//fmt.Println("conn is %%%%: ",conn)
-		if conn == nil || conn.GetState() == connectivity.TransientFailure || conn.GetState() == connectivity.Shutdown  || string(conn.GetState()) == "INVALID_STATE" {
+		if conn == nil || conn.GetState() == connectivity.TransientFailure || conn.GetState() == connectivity.Shutdown || string(conn.GetState()) == "INVALID_STATE" {
 			//fmt.Println("inside conn if conn is %%%%: ",conn)
 			mutex.Lock()
 			conn, err = grpc.Dial(apiHostUrl, opts...)
@@ -522,13 +518,10 @@ func (b *batchAgg) exportProtoMsgBatch(events []*Event) {
 			}
 		}
 
-
-
 		//auth, _ := oauth.NewApplicationDefault(context.Background(), "")
 		//conn, err := grpc.Dial(apiHost, grpc.WithPerRPCCredentials(auth))
 
 		//fmt.Println("after conn if conn is %%%%: ",conn)
-
 
 		c := proxypb.NewTraceProxyServiceClient(conn)
 
@@ -657,12 +650,12 @@ func (b *batchAgg) exportProtoMsgBatch(events []*Event) {
 
 		defer cancel()
 		r, err := c.ExportTraceProxy(ctx, &req)
-		if err != nil ||  r.GetStatus() == ""   {
+		if err != nil || r.GetStatus() == "" {
 			fmt.Printf("could not export traces from proxy in %v try: %v", i, err)
 			b.metrics.Increment("send_errors")
 			//b.metrics.Increment( "counterResponseErrors")
 			continue
-		}else{
+		} else {
 			b.metrics.Increment("batches_sent")
 			//b.metrics.Increment("counterResponse20x")
 		}
@@ -672,8 +665,6 @@ func (b *batchAgg) exportProtoMsgBatch(events []*Event) {
 		fmt.Printf("\ntrace proxy response status: %s\n", r.GetStatus())
 		break
 	}
-
-
 
 	/*
 		url, err := url.Parse(apiHost)
@@ -849,7 +840,6 @@ func (b *batchAgg) exportProtoMsgBatch(events []*Event) {
 
 }
 
-
 var grpcInterceptor = func(ctx context.Context,
 	method string,
 	req interface{},
@@ -870,9 +860,6 @@ var grpcInterceptor = func(ctx context.Context,
 	}
 	return err
 }
-
-
-
 
 /*func (b *batchAgg) exportBatch(events []*Event) {
 	fmt.Println("Exporting batch..")
@@ -1296,7 +1283,6 @@ func (b *batchAgg) fireBatch(events []*Event) {
 // create the JSON for this event list manually so that we can send
 // responses down the response queue for any that fail to marshal
 func (b *batchAgg) encodeBatchJSON(events []*Event) ([]byte, int) {
-
 
 	// track first vs. rest events for commas
 	first := true
